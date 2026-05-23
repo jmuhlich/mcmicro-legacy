@@ -106,7 +106,6 @@ process getParams {
     publishDir "${params.path}/${params.name}", mode: 'move'
 
     output: file 'params.yml'
-    when: hasParams
 
     """
     curl -f -o params.yml "${url}/params.yml"
@@ -149,5 +148,7 @@ workflow {
         getMarkers("| sed -n \"1p;${mFrom},${mTo}p\"")
     }
 
-    getParams()
+    if (hasParams) {
+        getParams()
+    }
 }

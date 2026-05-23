@@ -1,9 +1,3 @@
-// Import utility functions from lib/mcmicro/*.groovy
-import mcmicro.*
-
-// For nested string formatting
-import groovy.text.GStringTemplateEngine
-
 // Process name will appear in the the nextflow execution log
 // While not strictly required, it's a good idea to make the 
 //   process name match your tool name to avoid user confusion
@@ -23,7 +17,7 @@ process backsub {
     // Stores .command.sh and .command.log from the work directory
     //   to the project provenance
     // No change to this line is required
-    publishDir "${Flow.QC(params.in, 'provenance')}", mode: 'copy', 
+    publishDir "${mcmicro.Flow.QC(params.in, 'provenance')}", mode: 'copy', 
       pattern: '.command.{sh,log}',
       saveAs: {fn -> fn.replace('.command', "${module.name}-${task.index}")}
     
@@ -44,10 +38,6 @@ process backsub {
     // Provenance files
     tuple path('.command.sh'), path('.command.log')
 
-  // Specifies whether to run the process
-  // Here, we simply take the flag from the workflow parameters
-  when: mcp.workflow["background"]
-
   script:
     // String replacement Map for the syntax of ${variable_name} in
     //   module.cmd
@@ -56,13 +46,13 @@ process backsub {
       image_id: image_id,
       image: image,
     ]
-    def command = new GStringTemplateEngine()
+    def command = new groovy.text.GStringTemplateEngine()
       .createTemplate(module.cmd)
       .make(formatMap)
       .toString()
 
     """
-    $command ${Opts.moduleOpts(module, mcp)}
+    $command ${mcmicro.Opts.moduleOpts(module, mcp)}
     """
 }
 
@@ -77,7 +67,7 @@ workflow background {
   main:
     // Assemble inputs from multiple channels
     inputs = imgs
-      .map{ f -> tuple(Util.getImageID(f), f) }
+      .map{ f -> tuple(mcmicro.Util.getImageID(f), f) }
       .combine(marker)
     backsub(mcp, mcp.modules['background'], inputs)
     

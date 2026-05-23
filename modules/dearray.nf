@@ -1,5 +1,3 @@
-import mcmicro.*
-
 process coreograph {
     container "${params.contPfx}${module.container}:${module.version}"
     
@@ -8,11 +6,11 @@ process coreograph {
       pattern: '{*.ome.tif,**mask.tif}'
 
     // QC
-    publishDir "${Flow.QC(params.in, module.name)}",
-      mode: "${mcp.workflow['qc-files']}", pattern: '{TMA_MAP.tif,centroidsY-X.txt}'
+    publishDir { "${mcmicro.Flow.QC(params.in, module.name)}" },
+        mode: { "${mcp.workflow['qc-files']}" }, pattern: '{TMA_MAP.tif,centroidsY-X.txt}'
     
     // Provenance
-   publishDir "${Flow.QC(params.in, 'provenance')}", mode: 'copy', 
+   publishDir "${mcmicro.Flow.QC(params.in, 'provenance')}", mode: 'copy', 
       pattern: '.command.{sh,log}',
       saveAs: {fn -> fn.replace('.command', "${module.name}")}
     
@@ -28,16 +26,15 @@ process coreograph {
       path "centroidsY-X.txt"
       tuple path('.command.sh'), path('.command.log')    
 
-    when: Flow.doirun('dearray', mcp.workflow)
-
+    script:
     """
-    ${module.cmd} ${module.input} $s ${Opts.moduleOpts(module, mcp)}
+    ${module.cmd} ${module.input} $s ${mcmicro.Opts.moduleOpts(module, mcp)}
     """
 }
 
 workflow dearray {
   take:
-    mcp     // MCMICRO parameters (as returned by Opts.parseParams())
+    mcp     // MCMICRO parameters (as returned by mcmicro.Opts.parseParams())
     tma     // Image of the entire TMA
 
   main:

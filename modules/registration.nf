@@ -1,12 +1,10 @@
-import mcmicro.*
-
 process ashlar {
     container "${params.contPfx}${module.container}:${module.version}"
     publishDir "${params.in}/registration", mode: "${params.publish_dir_mode}",
       pattern: '{,*/}*.tif'
     
     // Provenance
-    publishDir "${Flow.QC(params.in, 'provenance')}", mode: 'copy', 
+    publishDir "${mcmicro.Flow.QC(params.in, 'provenance')}", mode: 'copy', 
       pattern: '.command.{sh,log}',
       saveAs: {fn -> fn.replace('.command', "${module.name}-${task.index}")}
     
@@ -19,16 +17,14 @@ process ashlar {
       path "{,*/}*.ome.tif", emit: img
       tuple path('.command.sh'), path('.command.log')
 
-    when: Flow.doirun('registration', mcp.workflow)
-    
     script:
       // Options
-      def opts = Opts.moduleOpts(module, mcp)
+      def opts = mcmicro.Opts.moduleOpts(module, mcp)
         .replace('{samplename}', sampleName)
 
       // Images
       def imgs = opts.contains("filepattern|") || opts.contains("fileseries|") ? "" :
-        lrelPath.collect{ Util.escapeForShell(it) }.join(" ")
+        lrelPath.collect{ mcmicro.Util.escapeForShell(it) }.join(" ")
 
       // Illumination profiles
       def ilp = "--ffp $lffp --dfp $ldfp"

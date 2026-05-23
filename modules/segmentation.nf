@@ -1,19 +1,20 @@
-import mcmicro.*
+include {worker} from '../lib/worker'
+include {roadie} from '../roadie.nf'
 
 process s3seg {
     container "${params.contPfx}${module.container}:${module.version}"
 
     // Output
-    publishDir "${pubDir}/$tag", mode: "${params.publish_dir_mode}",
+    publishDir { "${pubDir}/$tag" }, mode: "${params.publish_dir_mode}",
       pattern: '{*/*.ome.tif,*.csv}', saveAs: {f -> file(f).name}
 
     // QC
-    publishDir "${Flow.QC(params.in, '/s3seg/' + tag)}",
-      mode: "${mcp.workflow['qc-files']}",
+    publishDir { "${mcmicro.Flow.QC(params.in, '/s3seg/' + tag)}" },
+        mode: { "${mcp.workflow['qc-files']}" },
       pattern: '*/qc/**', saveAs: {f -> file(f).name}
 
     // Provenance
-    publishDir "${Flow.QC(params.in, 'provenance')}", mode: 'copy',
+    publishDir "${mcmicro.Flow.QC(params.in, 'provenance')}", mode: 'copy',
       pattern: '.command.{sh,log}',
       saveAs: {fn -> fn.replace('.command', "${module.name}-${task.index}")}
     
@@ -32,8 +33,6 @@ process s3seg {
       path('*/qc/**'), optional: true
       tuple path('.command.sh'), path('.command.log')
 
-    when: Flow.doirun('watershed', mcp.workflow)
-    
     script:
     def crop = mcp.workflow['tma'] ?
     '--crop dearray --maskPath mask.tif' :
@@ -41,12 +40,9 @@ process s3seg {
     """
     python /app/S3segmenter.py $crop \
        --imagePath $core --stackProbPath $probs \
-       $bypass ${Opts.moduleOpts(module, mcp)} --outputPath .
+       $bypass ${mcmicro.Opts.moduleOpts(module, mcp)} --outputPath .
     """
 }
-
-include {worker} from "$projectDir/lib/worker"
-include {roadie} from "$projectDir/roadie"
 
 workflow segmentation {
   take:
@@ -94,8 +90,8 @@ workflow segmentation {
       false, '', '' )
 
     // Determine IDs of images
-    id_cut   = recyzeOut.map{ f -> tuple(Util.getFileID(f, '_crop.ome'), f) }
-    id_uncut = recyzeIn.noCut.map{ f -> tuple(Util.getImageID(f), f) }
+    id_cut   = recyzeOut.map{ f -> tuple(mcmicro.Util.getFileID(f, '_crop.ome'), f) }
+    id_uncut = recyzeIn.noCut.map{ f -> tuple(mcmicro.Util.getImageID(f), f) }
     id_imgs = id_cut.mix(id_uncut)
 
     // Determine if there are any custom models for each module
@@ -112,13 +108,19 @@ workflow segmentation {
 
     // Run probability map generators and instance segmenters
     // All outputs will be published to probability-maps/
-    worker( mcp, inpPM, '*.{tif,tiff}', 'segmentation' )
+    def res
+    if (mcmicro.Flow.doirun('segmentation', mcp.workflow)) {
+        worker( mcp, inpPM, '*.{tif,tiff}' )
+        res = worker.out.res;
+    } else {
+        res = channel.empty();
+    }
 
     // Merge against precomputed probability maps
     //  and information about whether the module needs watershed
     allpmaps = prepmaps.map{ mtd, f ->
-        tuple(Util.getFileID(f, '-pmap'), mtd, f) }
-        .mix(worker.out.res)
+        tuple(mcmicro.Util.getFileID(f, '-pmap'), mtd, f) }
+        .mix(res)
         .combine( needWS, by:1 )   // changes order to (mtd, tag, f, ws)
     
     // Filter out any workers who published their files to segmentation/
@@ -133,7 +135,7 @@ workflow segmentation {
     // Whole-slide images have no TMA masks
     id_wsi = id_imgs.map{ id, _2 -> tuple(id, 'NO_MASK') }
         .filter{ !mcp.workflow['tma'] }
-    id_masks = tmamasks.map{ f -> tuple(Util.getFileID(f,'_mask'), f) }
+    id_masks = tmamasks.map{ f -> tuple(mcmicro.Util.getFileID(f,'_mask'), f) }
         .mix(id_wsi)
 
     // Combine everything based on IDs
@@ -142,13 +144,19 @@ workflow segmentation {
 	        tuple("${mtd}-${tag}", img, msk, pm, bypass) }
 
     // Apply s3seg to probability-maps only
-    s3seg( mcp, mcp.modules['watershed'], inputs, pathSeg )
+    if (mcmicro.Flow.doirun('watershed', mcp.workflow)) {
+        s3seg( mcp, mcp.modules['watershed'], inputs, pathSeg )
+        segmasks = s3seg.out.segmasks
+    } else {
+        segmasks = channel.empty()
+    }
 
     // Merge against instance segmentation outputs
     instSeg = allpmaps.filter{ _1, _2, _3, ws -> ws == 'no' }
         .map{ mtd, tag, _3, _4 -> tuple("${mtd}-${tag}", _3) }.groupTuple()
         .map{ mt, paths -> tuple(mt, paths.flatten()) }
-    
+    segmasks = instSeg.mix(segmasks)
+
   emit:
-    s3seg.out.segmasks.mix(instSeg)
+    segmasks
 }

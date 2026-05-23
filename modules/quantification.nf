@@ -1,5 +1,3 @@
-import mcmicro.*
-
 process mcquant {
     container "${params.contPfx}${module.container}:${module.version}"
 
@@ -8,7 +6,7 @@ process mcquant {
       pattern: '*.csv'
 
     // Provenance
-    publishDir "${Flow.QC(params.in, 'provenance')}", mode: 'copy', 
+    publishDir "${mcmicro.Flow.QC(params.in, 'provenance')}", mode: 'copy', 
       pattern: '.command.{sh,log}',
       saveAs: {fn -> fn.replace('.command', "${module.name}-${task.index}")}
     
@@ -21,12 +19,11 @@ process mcquant {
       path '*.csv', emit: tables
       tuple path('.command.sh'), path('.command.log')
 
-    when: Flow.doirun('quantification', mcp.workflow)
-
+    script:
     """
     shopt -s nullglob
     mcquant --image $tag \
-    ${Opts.moduleOpts(module, mcp)} --output . --channel_names $ch
+    ${mcmicro.Opts.moduleOpts(module, mcp)} --output . --channel_names $ch
     """
 }
 
@@ -40,15 +37,15 @@ workflow quantification {
     main:
 
     // Determine IDs of images
-    id_imgs = imgs.map{ f -> tuple(Util.getImageID(f), f) }
+    id_imgs = imgs.map{ f -> tuple(mcmicro.Util.getImageID(f), f) }
 
     // Determine IDs of segmentation masks
-    id_msks = segmasks.map{ id, msk -> x = id.split('-',2); tuple(x[1], x[0], msk) }
+    id_msks = segmasks.map{ id, msk -> def x = id.split('-',2); tuple(x[1], x[0], msk) }
 
     // Combine everything based on IDs
     inputs = id_msks.combine(id_imgs, by:0)
       .map{ id, mtd, msk, img -> 
-        tuple("${Util.getImageID(img)}--${mtd}.ome.tif", img, msk) }
+        tuple("${mcmicro.Util.getImageID(img)}--${mtd}.ome.tif", img, msk) }
       .combine( markers )
     mcquant(mcp, mcp.modules['quantification'], inputs)
     

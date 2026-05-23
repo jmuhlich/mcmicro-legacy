@@ -1,5 +1,3 @@
-import mcmicro.*
-
 // General worker process
 //
 // Inputs:
@@ -16,7 +14,6 @@ import mcmicro.*
 //   inp     - input file to process (e.g., .ome.tif for probability-map generation)
 //   fnOut   - (optional) if not '', outputs will be renamed to this upon publication
 //   outfmt  - a regular expression defining the outputs to capture
-//   step    - name of the pipeline step that is running the worker(s)
 //   pubDir  - directory to publish outputs to
 //
 // Outputs:
@@ -28,16 +25,16 @@ process worker {
     tag "${module.name}-${task.index}"
     
     // Output files in the pre-configured output format (outfmt) and optional plots
-    publishDir "${pubDir}", mode: "${params.publish_dir_mode}",
-      pattern: "$outfmt", saveAs: {fn -> fnOut != '' ? fnOut : fn}
-    publishDir "${pubDir}", mode: "${params.publish_dir_mode}", pattern: 'plots/**'
+    publishDir { pubDir }, mode: "$params.publish_dir_mode",
+        pattern: { "$outfmt" }, saveAs: {fn -> fnOut != '' ? fnOut : fn}
+    publishDir { "${pubDir}" }, mode: "${params.publish_dir_mode}", pattern: 'plots/**'
 
     // QC
-    publishDir "${Flow.QC(params.in, module.name)}", mode: "${mcp.workflow['qc-files']}",
+    publishDir { "${mcmicro.Flow.QC(params.in, module.name)}" }, mode: "$params.publish_dir_mode",
       pattern: 'qc/**', saveAs: { fn -> fn.replaceFirst("qc/","") }
     
     // Provenance
-    publishDir "${Flow.QC(params.in, 'provenance')}", mode: 'copy', 
+    publishDir "${mcmicro.Flow.QC(params.in, 'provenance')}", mode: 'copy', 
       pattern: '.command.{sh,log}',
       saveAs: {fn -> fn.replace('.command', "${module.name}-${task.index}")}
 
@@ -45,7 +42,6 @@ process worker {
         val(mcp)
         tuple val(tag), val(module), file(model), path(inp), val(pubDir), val(fnOut)
         val(outfmt)
-        val(step)
 
     output:
 
@@ -61,15 +57,13 @@ process worker {
     // Provenance
     tuple path('.command.sh'), path('.command.log')
 
-    when: Flow.doirun(step, mcp.workflow)
-    
     // We are creating a copy of the model file to deal with some tools locking files
     // Without this copying, the lock prevents parallel execution of multiple processes
     //   if they all use the same model file.
     script:
 
     // Find module specific parameters
-    def opts = "${Opts.moduleOpts(module, mcp)}"
+    def opts = "${mcmicro.Opts.moduleOpts(module, mcp)}"
 
     // Determine if we need to pass the input as a membrane image also
     def mmbr = (opts.indexOf('membrane') > -1 && module.containsKey('membrane-input')) ?

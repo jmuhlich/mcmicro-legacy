@@ -1,7 +1,3 @@
-nextflow.enable.dsl=2
-
-import org.yaml.snakeyaml.Yaml
-
 def roadieHelp() {
   println """
   Roadie: miscellaneous MCMICRO-related tasks
@@ -35,10 +31,10 @@ process showHelp {
     executor 'local'
     container "${params.contPfx}${params.roadie}"
 
-    when: params.containsKey('help')
     input: path(code)
     output: stdout
 
+    script:
     """
     echo ''
     python $code --help
@@ -47,11 +43,12 @@ process showHelp {
 
 process runTask {
     container "${params.contPfx}${params.roadie}"
-    publishDir "${specs.pubDir}", mode: "${specs.pubMode}", enabled: "${specs.pub}"
+    publishDir { "${specs.pubDir}" }, mode: { "${specs.pubMode}" }, enabled: { "${specs.pub}" }
 
     input: each path(code); path(input); val(opts); val(specs)
     output: path("${specs.output}")
-    
+
+    script:
     """
     python $code --in $input $opts
     """
@@ -70,8 +67,8 @@ workflow roadie {
 
   main:
     // Parse task specs
-    tasks = new Yaml().load(file("$projectDir/roadie/tasks.yml"))
-    specs = tasks.containsKey(task) ? tasks[task] : (error "Unknown task.")
+    tasks = new org.yaml.snakeyaml.Yaml().load(file("$projectDir/roadie/tasks.yml"))
+    specs = tasks.containsKey(task) ? tasks[task] : error('Unknown task.')
 
     // Pad specs with the publication strategy
     specs.pub     = pub
@@ -101,7 +98,7 @@ workflow {
     }
 
     // Parse task specs
-    tasks = new Yaml().load(file("$projectDir/roadie/tasks.yml"))
+    tasks = new org.yaml.snakeyaml.Yaml().load(file("$projectDir/roadie/tasks.yml"))
 
     // List available tasks
     if(params.containsKey('list-tasks')) {
@@ -114,13 +111,15 @@ workflow {
 
     // Retrieve the appropriate specs
     task = params.containsKey('do') ? params.do : params.help
-    specs = tasks.containsKey(task) ? tasks[task] : (error "Unknown task.")
+    specs = tasks.containsKey(task) ? tasks[task] : error("Unknown task.")
 
     // Identify the script
     code = Channel.fromPath("$projectDir/roadie/scripts/${task}.py")
 
     // Display task help, if requested
-    showHelp(code).view()
+    if (params.containsKey('help')) {
+        showHelp(code).view()
+    }
 
     // Verify the presence of input parameters
     if(params.containsKey('do')) {

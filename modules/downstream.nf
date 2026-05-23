@@ -1,4 +1,4 @@
-include {worker} from "$projectDir/lib/worker"
+include {worker} from '../lib/worker'
 
 workflow downstream {
   take:
@@ -16,7 +16,9 @@ workflow downstream {
         .combine(input)
         .map{ mod, _2, _3 ->
         tuple( '', mod, _2, _3, "${params.in}/downstream/${mod.name}", '') }
-    worker( mcp, inp, '*.{csv,h5ad}', 'downstream' )
+    if (mcmicro.Flow.doirun('downstream', mcp.workflow)) {
+        worker( mcp, inp, '*.{csv,h5ad}' )
+    }
 
   emit:
     worker.out.res

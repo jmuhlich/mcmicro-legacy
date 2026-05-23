@@ -1,7 +1,3 @@
-import mcmicro.*
-
-import groovy.text.GStringTemplateEngine
-
 process phenoimager2mc {
     // Use the container specification from the parameter file
     container "${params.contPfx}${module.container}:${module.version}"
@@ -9,7 +5,7 @@ process phenoimager2mc {
       pattern: '*.tif'
     
     // Provenance
-    publishDir "${Flow.QC(params.in, 'provenance')}", mode: 'copy', 
+    publishDir "${mcmicro.Flow.QC(params.in, 'provenance')}", mode: 'copy', 
       pattern: '.command.{sh,log}',
       saveAs: {fn -> fn.replace('.command', "${module.name}")}
     
@@ -22,8 +18,6 @@ process phenoimager2mc {
       tuple val(samplename), val(cycle), path("*.tif"), emit: img
       tuple path('.command.sh'), path('.command.log')
 
-    when: Flow.doirun('staging', mcp.workflow)
-    
     script:
       def formatMap = [
         marker: marker,
@@ -31,13 +25,13 @@ process phenoimager2mc {
         indir: indir,
       ]
 
-      def command = new GStringTemplateEngine()
+      def command = new groovy.text.GStringTemplateEngine()
         .createTemplate(module.cmd)
         .make(formatMap)
         .toString()
 
       """
-      ${command} ${Opts.moduleOpts(module, mcp)}
+      ${command} ${mcmicro.Opts.moduleOpts(module, mcp)}
       """
 }
 
